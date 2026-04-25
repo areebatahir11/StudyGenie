@@ -1,3 +1,4 @@
+#app/services/ai_agents.py
 from app.core.config import client
 
 def call_ai(prompt):
@@ -7,11 +8,55 @@ def call_ai(prompt):
     )
     return response.choices[0].message.content
 
+
 def explain_agent(topic, level):
-    return call_ai(f"Explain {topic} in {level} level simple words")
+    return call_ai(f"""You are a friendly tutor. Explain '{topic}' for a {level} level student.
+Use simple language, real-life examples, and keep it engaging.
+Use proper headings and formatting. Max 300 words.""")
 
-def notes_agent(explanation):
-    return call_ai(f"Convert this into short bullet notes:\n{explanation}")
 
-def quiz_agent(topic):
-    return call_ai(f"Create 5 MCQs with answers about {topic}")
+def notes_agent(topic, explanation):
+    return call_ai(f"""Create detailed, well-formatted study notes about '{topic}'.
+Based on this explanation: {explanation}
+
+Format with:
+- Main headings (##)
+- Subheadings (###)
+- Bullet points
+- Key terms in bold
+- Examples where needed
+Make it comprehensive and easy to read.""")
+
+
+def mcq_agent(topic):
+    return call_ai(f"""Create exactly 5 MCQ questions about '{topic}'.
+Format EXACTLY like this:
+
+Q1. Question here?
+A) Option 1
+B) Option 2
+C) Option 3
+D) Option 4
+ANSWER: A
+
+Q2. Question here?
+A) Option 1
+B) Option 2
+C) Option 3
+D) Option 4
+ANSWER: B
+
+Continue for all 5 questions. Keep beginner friendly.""")
+
+
+def short_answer_agent(topic):
+    return call_ai(f"""Create exactly 5 short answer questions about '{topic}'.
+Format EXACTLY like this:
+
+Q1. Question here?
+ANSWER: Brief answer here (1-2 sentences max)
+
+Q2. Question here?
+ANSWER: Brief answer here
+
+Continue for all 5 questions.""")
