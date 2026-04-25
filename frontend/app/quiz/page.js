@@ -12,6 +12,8 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState(0)
+  const [grading, setGrading] = useState(false)
+  const [gradeResult, setGradeResult] = useState(null)
 
   const stored = typeof window !== 'undefined' ? sessionStorage.getItem('studyResult') : null
   const quizType = typeof window !== 'undefined' ? sessionStorage.getItem('quizType') || 'mcq' : 'mcq'
@@ -65,24 +67,46 @@ export default function QuizPage() {
   }
 
   const handleSubmit = async () => {
-    let correct = 0
     if (quizType === 'mcq') {
+      let correct = 0
       questions.forEach(q => {
         if (answers[q.id] === q.correct) correct++
       })
       setScore(correct)
-    }
-    setSubmitted(true)
+      setSubmitted(true)
 
-    if (data?.session_id && quizType === 'mcq') {
+      if (data?.session_id) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/quiz-result`,
+            { session_id: data.session_id, score: correct, total: questions.length },
+            { headers: { Authorization: `Bearer ${session.access_token}` } }
+          )
+        } catch (err) { console.error(err) }
+      }
+
+    } else {
+      // Short answer — AI se grade karwao
+      setSubmitted(true)
+      setGrading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz-result`,
-          { session_id: data.session_id, score: correct, total: questions.length },
+        const answersPayload = questions.map(q => ({
+          question: q.question,
+          model_answer: q.answer,
+          student_answer: shortAnswers[q.id] || ''
+        }))
+        const response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/grade-short-answers`,
+          { topic: data.topic, answers: answersPayload },
           { headers: { Authorization: `Bearer ${session.access_token}` } }
         )
-      } catch (err) { console.error(err) }
+        setGradeResult(response.data)
+      } catch (err) {
+        console.error(err)
+      }
+      setGrading(false)
     }
   }
 
@@ -116,6 +140,7 @@ export default function QuizPage() {
           </div>
         </div>
 
+        {/* Questions */}
         <div className="space-y-4 mb-6">
           {questions.map((q, i) => (
             <div key={q.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -155,10 +180,32 @@ export default function QuizPage() {
                     disabled={submitted}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none h-24"
                   />
-                  {submitted && (
-                    <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-green-600 mb-1">✓ Model Answer:</p>
-                      <p className="text-sm text-green-700">{q.answer}</p>
+                  {/* Per question feedback after grading */}
+                  {submitted && gradeResult && (
+                    <div className="mt-3 space-y-2">
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-green-600 mb-1">✓ Model Answer:</p>
+                        <p className="text-sm text-green-700">{q.answer}</p>
+                      </div>
+                      <div className={`rounded-xl p-3 flex justify-between items-center ${
+                        gradeResult.scores[i] === 1 ? 'bg-green-50 border border-green-200' :
+                        gradeResult.scores[i] === 0.5 ? 'bg-yellow-50 border border-yellow-200' :
+                        'bg-red-50 border border-red-200'
+                      }`}>
+                        <p className={`text-xs ${
+                          gradeResult.scores[i] === 1 ? 'text-green-700' :
+                          gradeResult.scores[i] === 0.5 ? 'text-yellow-700' :
+                          'text-red-700'
+                        }`}>{gradeResult.feedbacks[i]}</p>
+                        <span className={`text-xs font-bold ml-3 ${
+                          gradeResult.scores[i] === 1 ? 'text-green-700' :
+                          gradeResult.scores[i] === 0.5 ? 'text-yellow-700' :
+                          'text-red-700'
+                        }`}>
+                          {gradeResult.scores[i] === 1 ? '✓ Full' :
+                           gradeResult.scores[i] === 0.5 ? '~ Half' : '✗ Wrong'}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -167,6 +214,7 @@ export default function QuizPage() {
           ))}
         </div>
 
+        {/* Submit Button */}
         {!submitted ? (
           <button
             onClick={handleSubmit}
@@ -182,6 +230,7 @@ export default function QuizPage() {
             percentage >= 60 ? 'bg-linear-to-br from-blue-500 to-blue-700 text-white shadow-lg' :
             'bg-white border border-gray-200 shadow-sm'
           }`}>
+
             {quizType === 'mcq' ? (
               <>
                 <div className="text-5xl mb-3">{percentage >= 80 ? '🏆' : percentage >= 60 ? '👍' : '💪'}</div>
@@ -201,10 +250,31 @@ export default function QuizPage() {
               </>
             ) : (
               <>
-                <div className="text-4xl mb-3">✅</div>
-                <h3 className="text-xl font-bold text-gray-700 mb-2">Quiz Completed!</h3>
-                <p className="text-gray-400 text-sm mb-6">Compare your answers with the model answers above</p>
-                <button onClick={() => router.push('/study')} className="px-6 py-2 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 transition">
+                <div className="text-4xl mb-3">
+                  {grading ? '🤖' : gradeResult ?
+                    (gradeResult.percentage >= 80 ? '🏆' : gradeResult.percentage >= 60 ? '👍' : '💪')
+                    : '✅'}
+                </div>
+
+                {grading ? (
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-700 mb-2 animate-pulse">AI is grading...</h3>
+                    <p className="text-gray-400 text-sm">Please wait while we evaluate your answers</p>
+                  </div>
+                ) : gradeResult ? (
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-700 mb-2">
+                      {gradeResult.percentage >= 80 ? 'Excellent!' : gradeResult.percentage >= 60 ? 'Good Job!' : 'Keep Trying!'}
+                    </h3>
+                    <p className="text-4xl font-bold text-violet-600 mb-1">
+                      {gradeResult.total}/{gradeResult.out_of}
+                    </p>
+                    <p className="text-gray-400 text-sm mb-2">{gradeResult.percentage}% Score</p>
+                    <p className="text-gray-400 text-xs mb-6">Check individual feedback above ↑</p>
+                  </div>
+                ) : null}
+
+                <button onClick={() => router.push('/study')} className="mt-2 px-6 py-2 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 transition">
                   Study New Topic
                 </button>
               </>

@@ -1,4 +1,3 @@
-#schemas/study.py
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -19,7 +18,7 @@ class NotesResponse(BaseModel):
 
 class QuizRequest(BaseModel):
     topic: str
-    quiz_type: str = "mcq"  # "mcq" ya "short"
+    quiz_type: str = "mcq"
 
 class QuizResponse(BaseModel):
     quiz: str
@@ -36,7 +35,15 @@ class QuizResultResponse(BaseModel):
     total: int
     percentage: float
 
-# Purana bhi rakho taake history kaam kare
+class ShortAnswerItem(BaseModel):
+    question: str
+    model_answer: str
+    student_answer: str
+
+class GradeRequest(BaseModel):
+    topic: str
+    answers: List[ShortAnswerItem]
+
 class StudyRequest(BaseModel):
     topic: str
     level: str = "beginner"

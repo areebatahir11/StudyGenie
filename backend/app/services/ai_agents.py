@@ -60,3 +60,29 @@ Q2. Question here?
 ANSWER: Brief answer here
 
 Continue for all 5 questions.""")
+
+
+
+def grade_short_answers(topic, questions_and_answers):
+    """AI se short answers grade karwao"""
+    qa_text = ""
+    for i, qa in enumerate(questions_and_answers):
+        qa_text += f"""
+Q{i+1}: {qa['question']}
+Model Answer: {qa['model_answer']}
+Student Answer: {qa['student_answer']}
+"""
+    
+    return call_ai(f"""You are a teacher grading short answer questions about '{topic}'.
+Grade each answer from 0 to 1 (1 = correct, 0.5 = partially correct, 0 = wrong).
+
+{qa_text}
+
+Respond EXACTLY in this format for each question:
+Q1_SCORE: 1
+Q1_FEEDBACK: Brief feedback here
+
+Q2_SCORE: 0.5
+Q2_FEEDBACK: Brief feedback here
+
+Continue for all questions. Be fair and encouraging.""")
