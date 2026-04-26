@@ -1,59 +1,82 @@
-'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
-import axios from 'axios'
+"use client";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
+import axios from "axios";
 
 export default function StudyPage() {
-  const router = useRouter()
-  const [topic, setTopic] = useState('')
-  const [level, setLevel] = useState('beginner')
-  const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState(null)
+  const router = useRouter();
+  const [topic, setTopic] = useState("");
+  const [level, setLevel] = useState("beginner");
+  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) router.push('/login')
-      else setUser(user)
-    }
-    getUser()
-  }, [])
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) router.push("/login");
+      else setUser(user);
+    };
+    getUser();
+  }, []);
 
   const handleStudy = async () => {
-    if (!topic.trim()) return
-    setLoading(true)
+    if (!topic.trim()) return;
+    setLoading(true);
+    setError("");
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/explain`,
         { topic, level },
-        { headers: { Authorization: `Bearer ${session.access_token}` } }
-      )
-      // Result ko localStorage ki jagah sessionStorage mein save karo
-      sessionStorage.setItem('studyResult', JSON.stringify({
-        topic,
-        level,
-        explanation: response.data.explanation,
-        session_id: response.data.session_id
-      }))
-      router.push('/explanation')
+        { headers: { Authorization: `Bearer ${session.access_token}` } },
+      );
+      sessionStorage.setItem(
+        "studyResult",
+        JSON.stringify({
+          topic,
+          level,
+          explanation: response.data.explanation,
+          session_id: response.data.session_id,
+        }),
+      );
+      router.push("/explanation");
     } catch (err) {
-      alert('Error! Check if backend is running.')
+      // Backend ka exact error message dikhao
+      if (err.response?.status === 422) {
+        setError("⚠️ Invalid input! Please check your topic.");
+      } else if (err.response?.status === 429) {
+        setError("⏳ Too many requests! Please wait a minute.");
+      } else if (err.response?.data?.detail) {
+        setError(`⚠️ ${err.response.data.detail}`);
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     }
-    setLoading(false)
-  }
+    setLoading(false);
+  };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
 
-  const suggestions = ['Python loops', 'World War 2', 'Photosynthesis', 'Machine Learning', 'Algebra basics', 'Newton Laws']
+  const suggestions = [
+    "Python loops",
+    "World War 2",
+    "Photosynthesis",
+    "Machine Learning",
+    "Algebra basics",
+    "Newton Laws",
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
-
       {/* Navbar */}
       <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-2">
@@ -61,23 +84,31 @@ export default function StudyPage() {
           <h1 className="text-xl font-bold text-violet-600">StudyGenie</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/history')} className="text-sm text-gray-500 hover:text-violet-600 transition">
+          <button
+            onClick={() => router.push("/history")}
+            className="text-sm text-gray-500 hover:text-violet-600 transition"
+          >
             📚 History
           </button>
-          <button onClick={handleLogout} className="text-sm bg-red-50 text-red-400 px-4 py-2 rounded-lg hover:bg-red-100 transition">
+          <button
+            onClick={handleLogout}
+            className="text-sm bg-red-50 text-red-400 px-4 py-2 rounded-lg hover:bg-red-100 transition"
+          >
             Logout
           </button>
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-16">
-
         {/* Hero */}
         <div className="text-center mb-10">
           <h2 className="text-4xl font-bold text-gray-800 mb-3">
-            What do you want to <span className="text-violet-600">learn</span> today?
+            What do you want to <span className="text-violet-600">learn</span>{" "}
+            today?
           </h2>
-          <p className="text-gray-400">Type any topic and get instant AI explanation</p>
+          <p className="text-gray-400">
+            Type any topic and get instant AI explanation
+          </p>
         </div>
 
         {/* Search Box */}
@@ -86,26 +117,28 @@ export default function StudyPage() {
             type="text"
             placeholder="e.g. Python loops, Photosynthesis, World War 2..."
             value={topic}
-            onChange={e => setTopic(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleStudy()}
+            onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleStudy()}
             className="w-full px-4 py-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 mb-4 text-gray-700"
           />
 
           {/* Level Selector */}
           <div className="flex gap-2 mb-5">
-            <span className="text-sm text-gray-500 self-center mr-1">Level:</span>
+            <span className="text-sm text-gray-500 self-center mr-1">
+              Level:
+            </span>
             {[
-              { value: 'beginner', emoji: '🌱' },
-              { value: 'intermediate', emoji: '🔥' },
-              { value: 'advanced', emoji: '🚀' }
-            ].map(l => (
+              { value: "beginner", emoji: "🌱" },
+              { value: "intermediate", emoji: "🔥" },
+              { value: "advanced", emoji: "🚀" },
+            ].map((l) => (
               <button
                 key={l.value}
                 onClick={() => setLevel(l.value)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition ${
                   level === l.value
-                    ? 'bg-violet-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
                 {l.emoji} {l.value}
@@ -118,15 +151,24 @@ export default function StudyPage() {
             disabled={loading || !topic.trim()}
             className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition disabled:opacity-50 text-base"
           >
-            {loading ? '✨ Generating explanation...' : '🚀 Generate Explanation'}
+            {loading
+              ? "✨ Generating explanation..."
+              : "🚀 Generate Explanation"}
           </button>
         </div>
+        {error && (
+          <div className="mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
+        )}
 
         {/* Suggestions */}
         <div>
-          <p className="text-xs text-gray-400 mb-3 text-center">Try these topics</p>
+          <p className="text-xs text-gray-400 mb-3 text-center">
+            Try these topics
+          </p>
           <div className="flex flex-wrap gap-2 justify-center">
-            {suggestions.map(s => (
+            {suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => setTopic(s)}
@@ -139,5 +181,5 @@ export default function StudyPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

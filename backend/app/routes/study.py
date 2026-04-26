@@ -1,14 +1,19 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from app.schemas.study import (
     ExplainRequest, ExplainResponse,
     NotesRequest, NotesResponse,
     QuizRequest, QuizResponse,
     QuizResultRequest, QuizResultResponse,
-    GradeRequest
+    GradeRequest,
 )
-from app.services.ai_agents import explain_agent, notes_agent, mcq_agent, short_answer_agent, grade_short_answers
-from app.core.config import supabase
+from app.services.ai_agents import (
+    explain_agent, notes_agent, mcq_agent,
+    short_answer_agent, grade_short_answers,
+)
+from app.core.config import supabase, limiter  # ← sirf ek baar
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -17,13 +22,19 @@ def get_user_from_token(authorization: str):
         token = authorization.replace("Bearer ", "")
         user = supabase.auth.get_user(token)
         return user.user
-    except:
+    except Exception as e:
+        logger.warning(f"Token validation failed: {type(e).__name__}")
         return None
 
 
 @router.post("/explain", response_model=ExplainResponse)
-def explain(data: ExplainRequest, authorization: str = Header(None)):
-    explanation = explain_agent(data.topic, data.level)
+@limiter.limit("10/minute")
+def explain(request: Request, data: ExplainRequest, authorization: str = Header(None)):
+    try:
+        explanation = explain_agent(data.topic, data.level)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     session_id = None
     if authorization:
         user = get_user_from_token(authorization)
@@ -40,8 +51,14 @@ def explain(data: ExplainRequest, authorization: str = Header(None)):
 
 
 @router.post("/notes", response_model=NotesResponse)
-def get_notes(data: NotesRequest, authorization: str = Header(None)):
-    notes = notes_agent(data.topic, data.explanation)
+@limiter.limit("10/minute")
+def get_notes(request: Request, data: NotesRequest, authorization: str = Header(None)):
+    try:
+        notes = notes_agent(data.topic, data.explanation)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # ✅ Sirf ek baar call — upar wala hi use hoga
     if authorization:
         user = get_user_from_token(authorization)
         if user:
@@ -61,11 +78,16 @@ def get_notes(data: NotesRequest, authorization: str = Header(None)):
 
 
 @router.post("/quiz", response_model=QuizResponse)
-def get_quiz(data: QuizRequest, authorization: str = Header(None)):
-    if data.quiz_type == "short":
-        quiz = short_answer_agent(data.topic)
-    else:
-        quiz = mcq_agent(data.topic)
+@limiter.limit("10/minute")
+def get_quiz(request: Request, data: QuizRequest, authorization: str = Header(None)):
+    try:
+        # ✅ Quiz agent call karo, notes nahi!
+        if data.quiz_type == "short":
+            quiz = short_answer_agent(data.topic)
+        else:
+            quiz = mcq_agent(data.topic)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if authorization:
         user = get_user_from_token(authorization)
@@ -86,7 +108,8 @@ def get_quiz(data: QuizRequest, authorization: str = Header(None)):
 
 
 @router.post("/quiz-result", response_model=QuizResultResponse)
-def save_quiz_result(data: QuizResultRequest, authorization: str = Header(None)):
+@limiter.limit("10/minute") 
+def save_quiz_result(request: Request, data: QuizResultRequest, authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Login required")
     user = get_user_from_token(authorization)
@@ -99,44 +122,50 @@ def save_quiz_result(data: QuizResultRequest, authorization: str = Header(None))
 
     percentage = (data.score / data.total) * 100
     if percentage >= 80:
-        message = "Excellent! Bohot acha kiya! 🎉"
+        message = "Excellent! That was great! 🎉"
     elif percentage >= 60:
-        message = "Good job! Thodi aur practice karo 👍"
+        message = "Good job! Needs practice a little more 👍"
     else:
-        message = "Keep trying! Topic dobara padhlo 💪"
+        message = "Keep trying! Need to revise the topic 💪"
 
     return {"message": message, "score": data.score, "total": data.total, "percentage": percentage}
 
 
 @router.post("/grade-short-answers")
-def grade_answers(data: GradeRequest):
+@limiter.limit("10/minute")
+def grade_answers(request: Request, data: GradeRequest, authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Login required")
+    user = get_user_from_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     qa_list = [
         {
             "question": item.question,
             "model_answer": item.model_answer,
-            "student_answer": item.student_answer
+            "student_answer": item.student_answer,
         }
         for item in data.answers
     ]
     result = grade_short_answers(data.topic, qa_list)
 
-    lines = result.split('\n')
+    lines = result.split("\n")
     scores = []
     feedbacks = []
 
     for line in lines:
         line = line.strip()
-        if '_SCORE:' in line:
+        if "_SCORE:" in line:
             try:
-                score = float(line.split(':')[1].strip())
+                score = float(line.split(":")[1].strip())
                 scores.append(score)
-            except:
+            except Exception:
                 scores.append(0)
-        elif '_FEEDBACK:' in line:
-            feedback = line.split(':', 1)[1].strip() if ':' in line else ''
+        elif "_FEEDBACK:" in line:
+            feedback = line.split(":", 1)[1].strip() if ":" in line else ""
             feedbacks.append(feedback)
 
-    # Agar parsing fail ho toh default values
     while len(scores) < len(qa_list):
         scores.append(0)
     while len(feedbacks) < len(qa_list):
@@ -150,7 +179,7 @@ def grade_answers(data: GradeRequest):
         "feedbacks": feedbacks,
         "total": total,
         "out_of": len(qa_list),
-        "percentage": round(percentage, 1)
+        "percentage": round(percentage, 1),
     }
 
 
