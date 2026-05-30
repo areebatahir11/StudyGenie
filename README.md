@@ -148,10 +148,15 @@ SUPABASE_SERVICE_KEY=your_service_key
 ```
 
 ---
+# Known Limitations
+
+* Invalid or nonsensical topics are currently processed by the LLM instead of being rejected.
+* Quiz submission validation is not enforced for empty responses.
+* Notes are currently exported as plain text instead of formatted PDF documents.
 
 # 📸 Future Improvements
 
-* PDF export for notes
+* Fomatted PDF export for notes
 * AI-generated flashcards
 * Voice-based study assistant
 * Personalized learning recommendations
